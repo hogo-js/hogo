@@ -1,0 +1,5 @@
+tests/
+examples/
+*.test.js
+.gitignore
+.npmrc

@@ -1,0 +1,90 @@
+name: Publish to npm
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to publish (e.g., v0.0.1)'
+        required: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run tests before publishing
+        run: npm run test:all
+        timeout-minutes: 15
+
+      - name: Verify package contents
+        run: |
+          echo "Checking package contents..."
+          test -f src/hogo.js || (echo "src/hogo.js missing" && exit 1)
+          test -f package.json || (echo "package.json missing" && exit 1)
+          test -f README.md || (echo "README.md missing" && exit 1)
+          test -f LICENSE || (echo "LICENSE missing" && exit 1)
+          echo "✓ All required files present"
+
+      - name: Publish to npm
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Verify published package
+        run: |
+          VERSION=$(grep '"version"' package.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          sleep 10
+          npm info hogo@$VERSION || (echo "Package not found on npm" && exit 1)
+          echo "✓ Package successfully published to npm"
+
+      - name: Create publish notification
+        run: |
+          VERSION=$(grep '"version"' package.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          echo "## 📦 Published to npm ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Package:** hogo" >> $GITHUB_STEP_SUMMARY
+          echo "**Version:** $VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "**Published:** $(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Installation" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "npm install hogo@$VERSION" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Links" >> $GITHUB_STEP_SUMMARY
+          echo "- [npm Package](https://www.npmjs.com/package/hogo)" >> $GITHUB_STEP_SUMMARY
+          echo "- [npm Registry](https://registry.npmjs.org/hogo)" >> $GITHUB_STEP_SUMMARY
+
+  post-publish:
+    if: always()
+    needs: publish
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Publish status
+        if: success()
+        run: echo "✅ Package successfully published to npm"
+
+      - name: Publish failed
+        if: failure()
+        run: |
+          echo "❌ Publication failed"
+          exit 1

@@ -1,0 +1,47 @@
+{
+  "name": "hogo",
+  "version": "0.0.1",
+  "description": "A self-optimizing Node.js web framework with atomic request coalescing. Zero dependencies. Built for developers who demand performance and elegance.",
+  "main": "src/index.js",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.js",
+    "./hogo": "./src/hogo.js",
+    "./router": "./src/router.js",
+    "./ship": "./src/ship.js",
+    "./middleware": "./src/middleware/index.js",
+    "./request-tracker": "./src/request-tracker.js"
+  },
+  "scripts": {
+    "test": "node tests/coalesce.test.js",
+    "test:error": "node tests/error-handling.test.js",
+    "test:timeout": "node tests/timeout.test.js",
+    "test:all": "npm run test && npm run test:error && npm run test:timeout",
+    "example": "node examples/basic.js",
+    "example:advanced": "node examples/advanced.js"
+  },
+  "keywords": [
+    "framework",
+    "http",
+    "request-coalescing",
+    "singleflight",
+    "router",
+    "zero-dependencies",
+    "nodejs",
+    "performance",
+    "deduplication",
+    "atomic"
+  ],
+  "author": "Hogo Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hogo-js/hogo.git"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "src/"
+  ]
+}

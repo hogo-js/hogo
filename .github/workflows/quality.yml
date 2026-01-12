@@ -1,0 +1,124 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check code style
+        run: |
+          echo "Checking code style..."
+          # Basic style checks
+          if grep -r "console.log" src/*.js | grep -v "test" | grep -v "example"; then
+            echo "⚠️  Warning: console.log found in production code"
+          fi
+
+      - name: Verify package.json
+        run: |
+          echo "Validating package.json..."
+          npm ls
+          echo "✓ package.json is valid"
+
+      - name: Check documentation
+        run: |
+          echo "Checking documentation..."
+          test -f README.md && echo "✓ README.md present"
+          test -f DEVELOPMENT.md && echo "✓ DEVELOPMENT.md present"
+          test -f QUICK_REFERENCE.md && echo "✓ QUICK_REFERENCE.md present"
+          test -f LICENSE && echo "✓ LICENSE present"
+
+      - name: Verify exports
+        run: |
+          echo "Verifying module exports..."
+          node -e "import('./src/index.js').then(() => console.log('✓ Main exports valid')).catch(e => { console.error('✗ Export error:', e.message); process.exit(1); })"
+
+      - name: Generate code statistics
+        run: |
+          echo "## Code Statistics" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Source Files:**" >> $GITHUB_STEP_SUMMARY
+          wc -l src/*.js src/middleware/*.js | tail -1 | awk '{print "- Total lines: " $1}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Files:**" >> $GITHUB_STEP_SUMMARY
+          wc -l tests/*.js | tail -1 | awk '{print "- Total lines: " $1}' >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**File Count:**" >> $GITHUB_STEP_SUMMARY
+          find src -type f -name "*.js" | wc -l | awk '{print "- Source files: " $1}' >> $GITHUB_STEP_SUMMARY
+          find tests -type f -name "*.js" | wc -l | awk '{print "- Test files: " $1}' >> $GITHUB_STEP_SUMMARY
+
+  dependencies:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Check for zero dependencies
+        run: |
+          echo "Verifying zero dependencies..."
+          DEP_COUNT=$(grep -c '"dependencies"' package.json)
+          if [ $DEP_COUNT -eq 0 ]; then
+            echo "✓ No dependencies (zero-dependency framework confirmed)"
+          else
+            DEPS=$(grep -A 5 '"dependencies"' package.json)
+            echo "✗ Found dependencies:"
+            echo "$DEPS"
+            exit 1
+          fi
+
+      - name: Audit dependencies
+        run: npm audit
+        continue-on-error: true
+
+  documentation:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify documentation completeness
+        run: |
+          echo "## Documentation Check" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          for file in README.md DEVELOPMENT.md QUICK_REFERENCE.md CHANGELOG.md LICENSE; do
+            if [ -f "$file" ]; then
+              SIZE=$(wc -c < "$file")
+              LINES=$(wc -l < "$file")
+              echo "✓ $file ($LINES lines)" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "✗ $file missing" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Check README quality
+        run: |
+          echo "Checking README..."
+          test -f README.md || (echo "README.md missing" && exit 1)
+          grep -q "Installation" README.md || (echo "Missing 'Installation' section" && exit 1)
+          grep -q "Quick Start" README.md || (echo "Missing 'Quick Start' section" && exit 1)
+          grep -q "API" README.md || (echo "Missing 'API' section" && exit 1)
+          echo "✓ README has all required sections"

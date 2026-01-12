@@ -1,0 +1,163 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 0.0.1)'
+        required: false
+        default: ''
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag format
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid tag format: $TAG (must be vX.Y.Z)"
+            exit 1
+          fi
+          echo "Valid tag: $TAG"
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Verify version in package.json
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            EXPECTED_VERSION="${{ github.event.inputs.version }}"
+          else
+            TAG=${GITHUB_REF#refs/tags/}
+            EXPECTED_VERSION="${TAG#v}"
+          fi
+          ACTUAL_VERSION=$(grep '"version"' package.json | grep -oE '[0-9]+\.[0-9]+\.[0-9]+')
+          if [ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]; then
+            echo "Version mismatch: package.json has $ACTUAL_VERSION but release is $EXPECTED_VERSION"
+            exit 1
+          fi
+
+  test:
+    needs: check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run all tests
+        run: npm run test:all
+        timeout-minutes: 15
+
+  create-release:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: version
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            TAG=${GITHUB_REF#refs/tags/}
+            VERSION="${TAG#v}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          VERSION=${{ steps.version.outputs.version }}
+          echo "## Version $VERSION" > RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "**Release Date:** $(date -u +'%Y-%m-%d')" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### Features" >> RELEASE_NOTES.md
+          echo "- Atomic request coalescing" >> RELEASE_NOTES.md
+          echo "- Zero-dependency framework" >> RELEASE_NOTES.md
+          echo "- Production-ready implementation" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### What's Included" >> RELEASE_NOTES.md
+          echo "- Core framework engine" >> RELEASE_NOTES.md
+          echo "- Request coalescing engine" >> RELEASE_NOTES.md
+          echo "- Routing system with dynamic parameters" >> RELEASE_NOTES.md
+          echo "- Response object (Ship)" >> RELEASE_NOTES.md
+          echo "- Built-in logging middleware (Antigravity)" >> RELEASE_NOTES.md
+          echo "- Comprehensive test suite" >> RELEASE_NOTES.md
+          echo "- Full documentation" >> RELEASE_NOTES.md
+          echo "" >> RELEASE_NOTES.md
+          echo "### Links" >> RELEASE_NOTES.md
+          echo "- [Documentation](https://github.com/hogo-framework/hogo#readme)" >> RELEASE_NOTES.md
+          echo "- [npm Package](https://www.npmjs.com/package/hogo)" >> RELEASE_NOTES.md
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          release_name: Release ${{ steps.version.outputs.version }}
+          body_path: RELEASE_NOTES.md
+          draft: false
+          prerelease: false
+
+      - name: Upload release artifacts
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-${{ steps.version.outputs.version }}
+          path: |
+            src/
+            package.json
+            README.md
+            LICENSE
+          retention-days: 30
+
+  notify:
+    if: always()
+    needs: create-release
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Release status
+        run: |
+          echo "## Release Complete ✅" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "A new version has been released and published." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Next Steps" >> $GITHUB_STEP_SUMMARY
+          echo "- Package will be automatically published to npm" >> $GITHUB_STEP_SUMMARY
+          echo "- Update documentation if needed" >> $GITHUB_STEP_SUMMARY
+          echo "- Announce release in community" >> $GITHUB_STEP_SUMMARY

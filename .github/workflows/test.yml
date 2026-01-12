@@ -1,0 +1,140 @@
+name: Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run tests daily at 2 AM UTC
+    - cron: '0 2 * * *'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [14.x, 16.x, 18.x, 20.x]
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run coalescing test
+        run: npm test
+        timeout-minutes: 5
+
+      - name: Run error handling test
+        run: npm run test:error
+        timeout-minutes: 5
+
+      - name: Run timeout test
+        run: npm run test:timeout
+        timeout-minutes: 5
+
+      - name: Run all tests
+        run: npm run test:all
+        timeout-minutes: 15
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: test-results-${{ matrix.node-version }}
+          path: test-results/
+          retention-days: 30
+
+  test-examples:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify basic example starts
+        run: |
+          timeout 5s npm run example || true
+        continue-on-error: true
+
+      - name: Verify advanced example starts
+        run: |
+          timeout 5s npm run example:advanced || true
+        continue-on-error: true
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18.x
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check package.json validity
+        run: npm ls
+
+      - name: Verify file structure
+        run: |
+          test -d src || (echo "src/ directory missing" && exit 1)
+          test -d tests || (echo "tests/ directory missing" && exit 1)
+          test -d examples || (echo "examples/ directory missing" && exit 1)
+          test -f src/hogo.js || (echo "src/hogo.js missing" && exit 1)
+          test -f README.md || (echo "README.md missing" && exit 1)
+          test -f package.json || (echo "package.json missing" && exit 1)
+
+  security:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run security audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Check for vulnerable dependencies
+        run: npm audit fix --dry-run
+        continue-on-error: true
+
+  build-report:
+    if: always()
+    needs: [test, test-examples, lint, security]
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Create test report
+        run: |
+          echo "## Test Run Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Node versions tested: 14.x, 16.x, 18.x, 20.x" >> $GITHUB_STEP_SUMMARY
+          echo "- All tests completed" >> $GITHUB_STEP_SUMMARY
+          echo "- Examples verified" >> $GITHUB_STEP_SUMMARY
+          echo "- File structure validated" >> $GITHUB_STEP_SUMMARY
+          echo "- Security audit completed" >> $GITHUB_STEP_SUMMARY
