@@ -78,14 +78,12 @@ jobs:
       - name: Check for zero dependencies
         run: |
           echo "Verifying zero dependencies..."
-          DEP_COUNT=$(grep -c '"dependencies"' package.json)
-          if [ $DEP_COUNT -eq 0 ]; then
-            echo "✓ No dependencies (zero-dependency framework confirmed)"
-          else
-            DEPS=$(grep -A 5 '"dependencies"' package.json)
-            echo "✗ Found dependencies:"
-            echo "$DEPS"
+          if grep -q '"dependencies"' package.json; then
+            echo "✗ Found dependencies in package.json"
+            grep -A 5 '"dependencies"' package.json
             exit 1
+          else
+            echo "✓ No dependencies (zero-dependency framework confirmed)"
           fi
 
       - name: Audit dependencies
